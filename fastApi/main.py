@@ -1,70 +1,130 @@
+import datetime
+
 from fastapi import FastAPI,Query,WebSocket
 from datetime import date
 import csv
 import websockets
 import logging
+import config
 import json
 from fastapi.middleware.cors import CORSMiddleware
-import os
+import pickle
+import time
+import redis
 
-MY_TOKEN = ""
+
+def log(message):
+
+    log_file_name = 'TimedRotatingFileHandler.log'
+    logging_level = logging.INFO
+    try:
+
+        # set TimedRotatingFileHandler for root
+        formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+        # use very short interval for this example, typical 'when' would be 'midnight' and no explicit interval
+        handler = logging.handlers.TimedRotatingFileHandler(log_file_name, when="M", interval=30, backupCount=30)
+        handler.setFormatter(formatter)
+        logger = logging.getLogger()  # or pass string to give it a name
+        logger.addHandler(handler)
+        logger.setLevel(logging_level)
+        time.sleep(0.1)
+
+        if logging.root.level==logging.INFO:
+            logger.info( message)
+        if logging.root.level==logging.WARNING:
+            logger.warning( message)
+        if logging.root.level==logging.ERROR:
+            logger.error( "\x1b[31;20m"+message+"\x1b[0m")
+        if logging.root.level==logging.CRITICAL:
+            logger.critical( message)
+    except KeyboardInterrupt:
+        # handle Ctrl-C
+        logging.warning("Cancelled by user")
+    except Exception as ex:
+        # handle unexpected script errors
+        logging.exception("Unhandled error\n{}".format(ex))
+        raise
+    finally:
+        # perform an orderly shutdown by flushing and closing all handlers; called at application exit and no further use of the logging system should be made after this call.
+        logging.shutdown()
+
+MY_TOKEN = config.token
 ENVIRONMENT = 'otcapp-UAT'
 PROTOCOL = 'wss'
 
 
 URI = f"{PROTOCOL}://{ENVIRONMENT}.tradias.de/otc/ws"
 
-buying_prices={"BTCEUR":[],"ETHEUR":[],"BNBEUR":[],"XRPEUR":[],"ADAEUR":[],"SOLEUR":[],"DOGEEUR":[],"DOTEUR":[]}
-selling_prices={"BTCEUR":[],"ETHEUR":[],"BNBEUR":[],"XRPEUR":[],"ADAEUR":[],"SOLEUR":[],"DOGEEUR":[],"DOTEUR":[]}
-# plot_location={"BTCEUR":[0,0],"ETHEUR":[0,1],"BNBEUR":[1,0],"XRPEUR":[1,1],"ADAEUR":[2,0],"SOLEUR":[2,1],"DOGEEUR":[3,0],"DOTEUR":[3,1]}
-colors={"BTCEUR":'red',"ETHEUR":'blue',"BNBEUR":'yellow',"XRPEUR":'green',"ADAEUR":'orange',"SOLEUR":'brown',"DOGEEUR":'black',"DOTEUR":'purple'}
-timestamp=[]
-counter = 0
-
+buying_prices={"BTCEUR":"","ETHEUR":"","BNBEUR":"","XRPEUR":"","ADAEUR":"","SOLEUR":"","DOGEEUR":"","DOTEUR":""}
+redis_buying_prices={"BTCEUR":{"data":[],"timestamp":[]},"ETHEUR":{"data":[],"timestamp":[]},"BNBEUR":{"data":[],"timestamp":[]},"XRPEUR":{"data":[],"timestamp":[]},"ADAEUR":{"data":[],"timestamp":[]},"SOLEUR":{"data":[],"timestamp":[]},"DOGEEUR":{"data":[],"timestamp":[]},"DOTEUR":{"data":[],"timestamp":[]}}
+selling_prices={"BTCEUR":"","ETHEUR":"","BNBEUR":"","XRPEUR":"","ADAEUR":"","SOLEUR":"","DOGEEUR":"","DOTEUR":""}
+timestamp=""
 headers = {
     "x-token-id": MY_TOKEN
 }
-
-
 origins = [
     "http://localhost",
     "http://localhost:3000",
 ]
-
 app=FastAPI()
 app.add_middleware(
-
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.websocket("/")
 
-@app.get("/")
-async def root():
-    return {"message":"Hello World"}
+async def root(websocket:WebSocket):
+    await websocket.accept()
+    global curr_day, counter
+    async with websockets.connet(uri=URI, extra_headers=headers, ping_interval=None) as websocket1:
+        for i in buying_prices:
+            await websocket1.send(json.dumps({
+                "type": "subscribe",
+                "channelname": "prices",
+                "instrument": i,
+                "heartbeat": True
+            }))
 
-@app.get("/items/")
-async def read_item(limit: str | None =Query(default=None, max_length=50)):
-    return {"item_id":limit}
+        while True:
+            message = json.loads(await websocket1.recv())
+            await websocket.send_text(json.dumps([buying_prices, timestamp]))
+            log(message)
+@app.get("/fetchFromRedis")
+async def read_item(interval: str | None =Query(default=None, max_length=50)):
+
+    client = redis.Redis(host='localhost', port=6379, db=0)
+    time_difference=int(interval[:len(interval)-3])*60
+    copy=pickle.loads(client.get("redis_buying_prices"))
+    timestamps=[]
+    data=[]
+    for instrument in redis_buying_prices:
+        for i in range(len(copy[instrument]["timestamp"])):
+            val = copy[instrument]["timestamp"][i]
+            val = datetime.datetime.strptime(val, "%Y-%m-%dT%H:%M:%S.%f%z").replace(tzinfo=None) + datetime.timedelta(
+                hours=3)
+            difference = datetime.datetime.now() - val
+            if difference.total_seconds() < time_difference:
+                timestamps.append(copy[instrument]["timestamp"][i])
+                data.append(copy[instrument]["data"][i])
+        copy[instrument]['data']=data
+        copy[instrument]['timestamp']=timestamps
+        data=[]
+        timestamps=[]
+    return copy
+
+
 
 @app.websocket("/getData")
 async def getData(websocket:WebSocket):
-        # print("HEY")
+        client = redis.Redis(host='localhost', port=6379, db=0)
+        global curr_day,counter,redis_buying_prices
+        client.set("redis_buying_prices",pickle.dumps(redis_buying_prices))
         await websocket.accept()
-        global curr_day,counter
         curr_day = str(date.today())
-
-        """
-        Function prints the received (& formatted) messages from the Tradias websocket,
-        when subscribing to the prices instrument for a specific instrument.
-        :param instrument: Instrument for which the prices are streamed
-        :return:
-        """
-
         async with websockets.connect(uri=URI, extra_headers=headers, ping_interval=None) as websocket1:
-
             for i in buying_prices:
                 await websocket1.send(json.dumps({
                     "type": "subscribe",
@@ -72,46 +132,19 @@ async def getData(websocket:WebSocket):
                     "instrument": i,
                     "heartbeat": True
                 }))
-            coins_response = []
             while True:
-
-                print("counter=",counter)
-                if str(date.today()) != curr_day:
-
-                    curr_day = str(date.today())
-                    counter += 1
                 message = json.loads(await websocket1.recv())
                 if 'levels' in message:
-                    if message["instrument"] not in coins_response:
-                        coins_response.append(message["instrument"])
-                        buying_prices[message["instrument"]].append(
-                            message["levels"]['buy'][len(message["levels"]['buy']) - 1]['price'])
-                        selling_prices[message["instrument"]].append(
-                            message["levels"]['sell'][len(message["levels"]['buy']) - 1]['price'])
-                    print(coins_response)
-                    if len(coins_response) == 8:
-                        current_time = message['timestamp'].split("T")[1][:len(message['timestamp'].split("T")[1]) - 1]
-                        timestamp.append(str(int(current_time[:2]) + 3) + current_time[2:8])
-                        coins_response=[]
-                        with open(f'file{counter}.txt', 'a',newline='') as file:
-                            writer = csv.writer(file, lineterminator='\n')
-                            if os.stat(f"file{counter}.txt").st_size == 0:
-                                headerList=["timestamp","BTCEUR","BNBEUR","ETHEUR","DOGEEUR","XRPEUR","DOTEUR","ADAEUR","SOLEUR"]
-                                writer.writerow(headerList)
-                                print(buying_prices["BTCEUR"])
-                            writer.writerow([timestamp[-1], buying_prices["BTCEUR"][-1], buying_prices["BNBEUR"][-1],
-                                             buying_prices["ETHEUR"][-1], buying_prices["DOGEEUR"][-1],
-                                             buying_prices["XRPEUR"][-1], buying_prices["DOTEUR"][-1],
-                                             buying_prices["ADAEUR"][-1], buying_prices["SOLEUR"][-1]])
+                    buying_prices[message["instrument"]]=message["levels"]['buy'][len(message["levels"]['buy']) - 1]['price']
+                    selling_prices[message["instrument"]]=message["levels"]['sell'][len(message["levels"]['buy']) - 1]['price']
+                    redis_buying_prices=pickle.loads(client.get("redis_buying_prices"))
+                    redis_buying_prices[message["instrument"]]['data'].append(message["levels"]['buy'][len(message["levels"]['buy']) - 1]['price'])
+                    redis_buying_prices[message["instrument"]]['timestamp'].append(message['timestamp'])
+                    client.set("redis_buying_prices", pickle.dumps(redis_buying_prices))
+                    await websocket.send_text(json.dumps([buying_prices,message['timestamp']]))
 
-                        await websocket.send_text(json.dumps([buying_prices,timestamp]))
-                else:
-                    print(message)
-                    with open(f'file{counter}.txt', 'a', newline='') as file:
-                        writer = csv.writer(file, lineterminator='\n')
-                        if os.stat(f"file{counter}.txt").st_size == 0:
-                                headerList=["timestamp","BTCEUR","BNBEUR","ETHEUR","DOGEEUR","XRPEUR","DOTEUR","ADAEUR","SOLEUR"]
-                                writer.writerow(headerList)
-                        writer.writerow([message])
+
+
+
 
 

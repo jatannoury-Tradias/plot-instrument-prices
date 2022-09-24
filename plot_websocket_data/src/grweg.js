@@ -1,32 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import ChartPlot from "./Chart";
 import './App.css';
-import { time } from "highcharts";
-import { fetchFromRedis } from "./http";
-
-
-let time_filter="0"
 
 export const App = () => {
   const [x, setX] = useState({"BTCEUR":{data:[],timestamp:[]},"ETHEUR":{data:[],timestamp:[]},"BNBEUR":{data:[],timestamp:[]},"XRPEUR":{data:[],timestamp:[]},"ADAEUR":{data:[],timestamp:[]},"SOLEUR":{data:[],timestamp:[]},"DOGEEUR":{data:[],timestamp:[]},"DOTEUR":{data:[],timestamp:[]}});
+  const [y,setY]=useState([]);
   const [display,setDisplay]=useState("0");
-  const [timeDisplay,setTimeDisplay]=useState("0");
-  const [fetchedData,setFetchedData]=useState(null);
   const ws = useRef(null);
+  const [storage,setStorage]=useState({"BTCEUR":{data:[],timestamp:[]},"ETHEUR":{data:[],timestamp:[]},"BNBEUR":{data:[],timestamp:[]},"XRPEUR":{data:[],timestamp:[]},"ADAEUR":{data:[],timestamp:[]},"SOLEUR":{data:[],timestamp:[]},"DOGEEUR":{data:[],timestamp:[]},"DOTEUR":{data:[],timestamp:[]}})
 
-  
-  useEffect(()=>{
-    time_filter=timeDisplay
-    // setX({"BTCEUR":{data:[],timestamp:[]},"ETHEUR":{data:[],timestamp:[]},"BNBEUR":{data:[],timestamp:[]},"XRPEUR":{data:[],timestamp:[]},"ADAEUR":{data:[],timestamp:[]},"SOLEUR":{data:[],timestamp:[]},"DOGEEUR":{data:[],timestamp:[]},"DOTEUR":{data:[],timestamp:[]}});
-    async function getData(){
-      const response=await fetchFromRedis(time_filter)
-      setX(response)
-      console.log(response)
-      console.log(x)
-    }getData()
-  },[timeDisplay])
-
-  
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:8000/getData");
 
@@ -38,27 +20,27 @@ export const App = () => {
     }
 
     socket.onmessage = (event) => {
-      // console.log(time_filter)
-    
       let data=JSON.parse(event.data)
+      // console.log("got message", data);
       let newX={...x}
       for (let i in data[0]){
-        if (time_filter==="0"){
-          newX[i]["data"].push(data[0][i])
-          newX[i]["timestamp"].push(data[1])
-          setX(newX)
+        newX[i]["data"].push(data[0][i])
+        newX[i]["timestamp"].push(data[1])
+        if (newX[i]["data"].length>=100){
+          let storageCopy={...storage}
+          storageCopy[i]["data"].push(newX[i]["data"].pop())
+          storageCopy[i]["timestamp"].push(newX[i]["timestamp"].pop())
+          newX=newX[i]["timestamp"].pop()
+          newX=newX[i]["data"].pop()
+          setStorage(storageCopy)
         }
-        if (newX[i]["data"].length>=300 ){
           
-          newX[i]["data"]=newX[i]["data"].slice(150)
-          newX[i]["timestamp"]=newX[i]["timestamp"].slice(150)
-        }
-      // console.log(x["BTCEUR"]['data'].length)
-      // console.log(x["BTCEUR"]['timestamp'].length)
-      // console.log(storage[i].length)
+      
+      setX(newX)
+      console.log(x["BTCEUR"]['data'].length)
+      console.log(x["BTCEUR"]['timestamp'].length)
       // console.log(storage["BTCEUR"]['data'].length)
-    }
-      };
+    }};
 
     ws.current = socket;
 
@@ -77,17 +59,15 @@ export const App = () => {
         <option value="1">4x2</option>
         <option value="2">2x4</option>
       </select>
-      <select onChange={(e)=>setTimeDisplay(e.target.value)} className="dropdown">
-        <option value="0">Live Data</option>
-        <option value="1min">1min</option>
-        <option value="5min">5min</option>
-        <option value="10min">10min</option>
+      <select onChange={(e)=>setDisplay(e.target.value)} className="dropdown">
+        <option value="0">8x1</option>
+        <option value="1">4x2</option>
+        <option value="2">2x4</option>
       </select>
     </div>
     
     </div>
     <div className={display==="0"?"display0":"box1"}>
-  
    {x.length!==0?<ChartPlot x={x["BTCEUR"]['timestamp']} y={x["BTCEUR"]['data']} instrument={"BTCEUR"} color={"#008000"}/>:<></>}
    {x.length!==0 && (display==="1"||display==="2")?<ChartPlot x={x["ETHEUR"]['timestamp']} y={x["ETHEUR"]['data']} instrument={"ETHEUR"} color={"#ffff00"}/>:<></>}
    {x.length!==0 && (display==="2")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"}/>:<></>}

@@ -5,11 +5,13 @@ const BACKEND_URL = `http://${hostname}:${portname}/`;
 axios.defaults.baseURL = BACKEND_URL;
 
 let data;
-export async function getPrices() {
+export async function fetchFromRedis(interval) {
   const response = await axios({
     method: "get",
-    url: "getData",
-    params:{},
+    url: "fetchFromRedis",
+    params:{
+      interval:interval
+    },
   }).then(
     (response) => {
       data = response.data;
