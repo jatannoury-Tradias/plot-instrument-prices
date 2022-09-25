@@ -28,11 +28,6 @@ def log(message):
         logger.addHandler(handler)
         logger.setLevel(logging_level)
         time.sleep(0.1)
-
-        if logging.root.level==logging.INFO:
-            logger.info( message)
-        if logging.root.level==logging.WARNING:
-            logger.warning( message)
         if logging.root.level==logging.ERROR:
             logger.error( "\x1b[31;20m"+message+"\x1b[0m")
         if logging.root.level==logging.CRITICAL:
@@ -94,8 +89,9 @@ async def root(websocket:WebSocket):
             log(message)
 @app.get("/fetchFromRedis")
 async def read_item(interval: str | None =Query(default=None, max_length=50)):
-
     client = redis.Redis(host='localhost', port=6379, db=0)
+    if interval=="ALL":
+        return pickle.loads(client.get("database"))
     time_difference=int(interval[:len(interval)-3])*60
     copy=pickle.loads(client.get("redis_buying_prices"))
     timestamps=[]
@@ -120,6 +116,7 @@ async def read_item(interval: str | None =Query(default=None, max_length=50)):
 @app.websocket("/getData")
 async def getData(websocket:WebSocket):
         client = redis.Redis(host='localhost', port=6379, db=0)
+        database=[]
         global curr_day,counter,redis_buying_prices
         client.set("redis_buying_prices",pickle.dumps(redis_buying_prices))
         await websocket.accept()
@@ -134,7 +131,9 @@ async def getData(websocket:WebSocket):
                 }))
             while True:
                 message = json.loads(await websocket1.recv())
+                client.set("database",pickle.dumps(database))
                 if 'levels' in message:
+                    database.append([message['timestamp'],message])
                     buying_prices[message["instrument"]]=message["levels"]['buy'][len(message["levels"]['buy']) - 1]['price']
                     selling_prices[message["instrument"]]=message["levels"]['sell'][len(message["levels"]['buy']) - 1]['price']
                     redis_buying_prices=pickle.loads(client.get("redis_buying_prices"))
@@ -142,6 +141,7 @@ async def getData(websocket:WebSocket):
                     redis_buying_prices[message["instrument"]]['timestamp'].append(message['timestamp'])
                     client.set("redis_buying_prices", pickle.dumps(redis_buying_prices))
                     await websocket.send_text(json.dumps([buying_prices,message['timestamp']]))
+                log(message)
 
 
 
