@@ -1,8 +1,7 @@
 import datetime
-
+from fastapi.responses import FileResponse
 from fastapi import FastAPI,Query,WebSocket
 from datetime import date
-import csv
 import websockets
 import logging
 import config
@@ -11,27 +10,44 @@ from fastapi.middleware.cors import CORSMiddleware
 import pickle
 import time
 import redis
+counter=0
 
 
 def log(message):
 
-    log_file_name = 'TimedRotatingFileHandler.log'
+    global initial_time
+    client = redis.Redis(host='localhost', port=6379, db=1)
+    all_warnings=[]
+    all_errors=[]
+    all_criticals=[]
+    client.set("warnings", pickle.dumps(all_warnings))
+    client.set("errors", pickle.dumps(all_errors))
+    client.set("criticals", pickle.dumps(all_criticals))
+    log_file_name = f'Errors.log'
+    handler = logging.handlers.TimedRotatingFileHandler(log_file_name, when="m", interval=1)
     logging_level = logging.INFO
     try:
-
-        # set TimedRotatingFileHandler for root
         formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
-        # use very short interval for this example, typical 'when' would be 'midnight' and no explicit interval
-        handler = logging.handlers.TimedRotatingFileHandler(log_file_name, when="M", interval=30, backupCount=30)
+
         handler.setFormatter(formatter)
-        logger = logging.getLogger()  # or pass string to give it a name
+        logger = logging.getLogger()
+        # or pass string to give it a name
         logger.addHandler(handler)
         logger.setLevel(logging_level)
         time.sleep(0.1)
+        if logging.root.level==logging.WARNING:
+            logger.warning( message)
+            all_warnings.append(str(message))
+            client.set("warnings",pickle.dumps(all_warnings))
         if logging.root.level==logging.ERROR:
-            logger.error( "\x1b[31;20m"+message+"\x1b[0m")
+            logger.error( message)
+            all_errors.append(str(message))
+            client.set("errors",pickle.dumps(all_errors))
         if logging.root.level==logging.CRITICAL:
             logger.critical( message)
+            all_criticals.append(str(message))
+            client.set("criticals",pickle.dumps(all_criticals))
+        print(pickle.loads(client.get("warnings")))
     except KeyboardInterrupt:
         # handle Ctrl-C
         logging.warning("Cancelled by user")
@@ -40,7 +56,6 @@ def log(message):
         logging.exception("Unhandled error\n{}".format(ex))
         raise
     finally:
-        # perform an orderly shutdown by flushing and closing all handlers; called at application exit and no further use of the logging system should be made after this call.
         logging.shutdown()
 
 MY_TOKEN = config.token
@@ -70,10 +85,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 @app.websocket("/")
-
 async def root(websocket:WebSocket):
     await websocket.accept()
-    global curr_day, counter
+    global curr_day
     async with websockets.connet(uri=URI, extra_headers=headers, ping_interval=None) as websocket1:
         for i in buying_prices:
             await websocket1.send(json.dumps({
@@ -88,10 +102,8 @@ async def root(websocket:WebSocket):
             await websocket.send_text(json.dumps([buying_prices, timestamp]))
             log(message)
 @app.get("/fetchFromRedis")
-async def read_item(interval: str | None =Query(default=None, max_length=50)):
+async def read_item(interval: str | None):
     client = redis.Redis(host='localhost', port=6379, db=0)
-    if interval=="ALL":
-        return pickle.loads(client.get("database"))
     time_difference=int(interval[:len(interval)-3])*60
     copy=pickle.loads(client.get("redis_buying_prices"))
     timestamps=[]
@@ -116,8 +128,8 @@ async def read_item(interval: str | None =Query(default=None, max_length=50)):
 @app.websocket("/getData")
 async def getData(websocket:WebSocket):
         client = redis.Redis(host='localhost', port=6379, db=0)
-        database=[]
-        global curr_day,counter,redis_buying_prices
+        data_storage=[]
+        global curr_day,redis_buying_prices
         client.set("redis_buying_prices",pickle.dumps(redis_buying_prices))
         await websocket.accept()
         curr_day = str(date.today())
@@ -129,11 +141,13 @@ async def getData(websocket:WebSocket):
                     "instrument": i,
                     "heartbeat": True
                 }))
+            client.set("database", pickle.dumps([]))
             while True:
                 message = json.loads(await websocket1.recv())
-                client.set("database",pickle.dumps(database))
+
                 if 'levels' in message:
-                    database.append([message['timestamp'],message])
+                    data_storage.append(message)
+                    client.set("data_storage", pickle.dumps(data_storage))
                     buying_prices[message["instrument"]]=message["levels"]['buy'][len(message["levels"]['buy']) - 1]['price']
                     selling_prices[message["instrument"]]=message["levels"]['sell'][len(message["levels"]['buy']) - 1]['price']
                     redis_buying_prices=pickle.loads(client.get("redis_buying_prices"))
@@ -141,10 +155,27 @@ async def getData(websocket:WebSocket):
                     redis_buying_prices[message["instrument"]]['timestamp'].append(message['timestamp'])
                     client.set("redis_buying_prices", pickle.dumps(redis_buying_prices))
                     await websocket.send_text(json.dumps([buying_prices,message['timestamp']]))
-                log(message)
 
 
 
-
-
+@app.get("/upload")
+def upload():
+    global counter
+    client = redis.Redis(host='localhost', port=6379, db=0)
+    data = client.get("data_storage")
+    data=pickle.loads(data)
+    with open(f"responseData{counter}.txt","a") as f:
+        for i in data:
+            new_date_format=datetime.datetime.strptime(i['timestamp'], "%Y-%m-%dT%H:%M:%S.%f%z").replace(tzinfo=None) + datetime.timedelta(
+                hours=3)
+            if (datetime.datetime.now()-new_date_format<datetime.timedelta(days=7)):
+                new_date_format=str(new_date_format)
+                f.write(new_date_format+": "+str(i)+" \n")
+            else:
+                counter+=1
+                break
+    try:
+        return FileResponse(f"responseData{counter}.txt", media_type="application/x-rar-compressed")
+    except:
+        return FileResponse(f"responseData{counter}.txt", media_type="application/x-rar-compressed")
 

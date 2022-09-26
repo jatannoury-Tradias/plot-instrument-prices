@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import ChartPlot from "./Chart";
 import './App.css';
 import { time } from "highcharts";
-import { fetchFromRedis } from "./http";
-
-
+import { fetchFromRedis, uploadFile } from "./http";
+import FileDownload from "js-file-download"
+import {Buffer} from 'buffer';
 let time_filter="0"
 
 export const App = () => {
@@ -12,7 +12,11 @@ export const App = () => {
   const [display,setDisplay]=useState("0");
   const [timeDisplay,setTimeDisplay]=useState("0");
   const ws = useRef(null);
-
+  
+  async function importData(){
+    const file=await uploadFile()
+    await FileDownload(file,__filename=(new Date (Date.now () - 7 * 24 * 60 * 60 * 1000)).toDateString()+"-"+(new Date (Date.now ())).toDateString())
+  }
   
   useEffect(()=>{
     time_filter=timeDisplay
@@ -23,6 +27,7 @@ export const App = () => {
         for (let i in response){
           for (let j in response[i]['timestamp']){
             response[i]['timestamp'][j]=new Date(response[i]['timestamp'][j]).toString().slice(0,24)
+            
           }
         }
         setX(response)
@@ -42,7 +47,6 @@ export const App = () => {
     }
 
     socket.onmessage = (event) => {
-      // console.log(time_filter)
     
       let data=JSON.parse(event.data)
       let newX={...x}
@@ -50,6 +54,7 @@ export const App = () => {
         if (time_filter==="0"){
           newX[i]["data"].push(data[0][i])
           newX[i]["timestamp"].push((new Date(data[1])).toString().slice(0,24))
+
           setX(newX)
         }
         if (newX[i]["data"].length>=300 ){
@@ -76,10 +81,11 @@ export const App = () => {
     <div className="box5">
     <p>Display</p>
     <div>
+    <button onClick={importData} className="dropdown">Import Data</button>
     <select onChange={(e)=>setDisplay(e.target.value)} className="dropdown">
-        <option value="0">8x1</option>
-        <option value="1">4x2</option>
-        <option value="2">2x4</option>
+        <option value="0" className="dropDownValues">8x1</option>
+        <option value="1" className="dropDownValues">4x2</option>
+        <option value="2" className="dropDownValues">2x4</option>
       </select>
       <select onChange={(e)=>setTimeDisplay(e.target.value)} className="dropdown">
         <option value="0">Live Data</option>
@@ -92,39 +98,39 @@ export const App = () => {
     </div>
     <div className={display==="0"?"display0":"box1"}>
   
-   {x.length!==0?<ChartPlot x={x["BTCEUR"]['timestamp']} y={x["BTCEUR"]['data']} instrument={"BTCEUR"} color={"#008000"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="1"||display==="2")?<ChartPlot x={x["ETHEUR"]['timestamp']} y={x["ETHEUR"]['data']} instrument={"ETHEUR"} color={"#ffff00"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="2")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="2")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0?<ChartPlot x={x["BTCEUR"]['timestamp']} y={x["BTCEUR"]['data']} instrument={"BTCEUR"} color={"#008000"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="1"||display==="2")?<ChartPlot x={x["ETHEUR"]['timestamp']} y={x["ETHEUR"]['data']} instrument={"ETHEUR"} color={"#ffff00"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="2")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="2")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
  <div className={display==="0"?"display0":'box2'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["ETHEUR"]['timestamp']} y={x["ETHEUR"]['data']} instrument={"ETHEUR"} color={"#ffff00"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="1")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="1")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 &&(display==="2")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="2")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="2")?<ChartPlot x={x["ADAEUR"]['timestamp']} y={x["ADAEUR"]['data']} instrument={"ADAEUR"} color={'#663300'} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="2")?<ChartPlot x={x["DOTEUR"]['timestamp']} y={x["DOTEUR"]['data']} instrument={"DOTEUR"} color={"#ff0000"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["ETHEUR"]['timestamp']} y={x["ETHEUR"]['data']} instrument={"ETHEUR"} color={"#ffff00"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="1")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="1")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 &&(display==="2")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="2")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="2")?<ChartPlot x={x["ADAEUR"]['timestamp']} y={x["ADAEUR"]['data']} instrument={"ADAEUR"} color={'#663300'} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="2")?<ChartPlot x={x["DOTEUR"]['timestamp']} y={x["DOTEUR"]['data']} instrument={"DOTEUR"} color={"#ff0000"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div>
  <div className={display==="0"?"display0":'box3'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="1")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay}/>:<></>}
-   {x.length!==0 && (display==="1")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["XRPEUR"]['timestamp']} y={x["XRPEUR"]['data']} instrument={"XRPEUR"} color={"#0000ff"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="1")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay} display={display}  />:<></>}
+   {x.length!==0 && (display==="1")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div>
  <div className={display==="0"?"display0":'box4'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["DOGEEUR"]['timestamp']} y={x["DOGEEUR"]['data']} instrument={"DOGEEUR"} color={"#800080"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
  <div className={display==="0"?"display0":'box4'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["BNBEUR"]['timestamp']} y={x["BNBEUR"]['data']} instrument={"BNBEUR"} color={"#000000"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
  <div className={display==="0"?"display0":'box4'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["SOLEUR"]['timestamp']} y={x["SOLEUR"]['data']} instrument={"SOLEUR"} color={"#ffa500"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
  <div className={display==="0"?"display0":'box4'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["ADAEUR"]['timestamp']} y={x["ADAEUR"]['data']} instrument={"ADAEUR"} color={"#663300"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["ADAEUR"]['timestamp']} y={x["ADAEUR"]['data']} instrument={"ADAEUR"} color={"#663300"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
  <div className={display==="0"?"display0":'box4'}>
-   {x.length!==0 && (display==="0")?<ChartPlot x={x["DOTEUR"]['timestamp']} y={x["DOTEUR"]['data']} instrument={"DOTEUR"} color={"#ff0000"} timeDisplay={timeDisplay}/>:<></>}
+   {x.length!==0 && (display==="0")?<ChartPlot x={x["DOTEUR"]['timestamp']} y={x["DOTEUR"]['data']} instrument={"DOTEUR"} color={"#ff0000"} timeDisplay={timeDisplay} display={display}  />:<></>}
  </div> 
 
 

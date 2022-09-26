@@ -25,3 +25,21 @@ export async function fetchFromRedis(interval) {
 
   return data;
 }
+export async function uploadFile(interval) {
+  const response = await axios({
+    method: "get",
+    url: "upload",
+    params:{},
+  }).then(
+    (response) => {
+      data = response.data;
+    },
+
+    (error) => {
+      data = error;
+      throw error;
+    }
+  );
+
+  return data;
+}

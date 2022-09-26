@@ -8,16 +8,20 @@ import "./App.css"
 Chart.register(zoomPlugin)
 Chart.register(annotationPlugin)
 
-const ChartPlot = ({x,y,instrument,color,timeDisplay}) => {
+const ChartPlot = ({x,y,instrument,color,timeDisplay,display}) => {
   const [state,setState] = useState({labels:x,datasets:[{label:instrument,data:y,borderColor:color}]})
   const [appliedPlugins,setappliedPlugins]=useState({})
+  const [maxValue, setMaxValue] = useState(0);
+  const [minValue, setMinValue] = useState(0);
+
   useEffect(()=>{
     setState({labels:x,datasets:[{label:instrument,data:y,borderColor:color}]})
   },[x,instrument])
 
+  
+
   useEffect(()=>{
-    debugger
-    console.log(appliedPlugins)
+    
     if (timeDisplay==="0"){
       setappliedPlugins({})
     }
@@ -34,14 +38,20 @@ const ChartPlot = ({x,y,instrument,color,timeDisplay}) => {
           }
         }
       })
+      console.log(y)
+      setMaxValue(Math.max(...y))
+      setMinValue(Math.min(...y))
     }
     
-    console.log(appliedPlugins)
   },[timeDisplay])
-
   return (
     <div className='chartWrapper'>
-    <span className='priceWrapper'><p className='latestPrice'>{instrument} : {y[y.length-1]}€</p></span>
+    <div className={display==="0"?`priceWrapper0`:`priceWrapper1`}>
+    <span ><p className='latestPrice'>{instrument} : {y[y.length-1]}€</p></span>
+    {timeDisplay!=="0" && <span ><p className='highestPrice'>Highest :{maxValue}€</p></span>}
+    {timeDisplay!=="0" && <span ><p className='lowestPrice'>Lowest :{minValue}€</p></span>}
+    
+    </div>
     <Line data={state} options={{spanGaps: true,color:color, 
       animation: {
         duration: 0

@@ -16,24 +16,46 @@
   min-width:1250px;
 }
 .dropdown{
-  padding: 10px;
+  padding-top: 10px;
+  padding-bottom: 10px;
   background-color:#eee;
+  margin-right: 10px;
+  margin-top: 5px;
+  min-width: 100px;
+  text-align: center;
+  border-radius: 10px;
 }
 p{
   font-family: 'Courier New', Courier, monospace;
   font-weight: bold;
   
 }
-.latestPrice{
+.latestPrice,.highestPrice,.lowestPrice{
   width: 100%;
-  font-size: large;
+  font-size: 15px;
   font-weight: bold;
   font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
 }
 
-.priceWrapper{
+.highestPrice{
+  color:green;
+}
+
+.lowestPrice{
+  color:red;
+}
+
+.priceWrapper0{
   width:100%;
   margin-left: 8%;
+  height:10px;
+  display: flex;
+  flex-direction: row;
+  gap:20px;
+}
+.priceWrapper1{
+  width:100%;
+  margin-left: 14%;
   height:10px;
 }
 
@@ -41,4 +63,7 @@ p{
   display: flex;
   flex-direction: column;
   min-width: 700px;
+}
+.dropDownValues{
+  text-align: center;
 }
